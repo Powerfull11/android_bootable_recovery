@@ -665,15 +665,15 @@ void TWPartition::Setup_Data_Partition(bool Display_Error) {
 	UnMount(false);
 
 #ifdef TW_INCLUDE_CRYPTO
-	Can_Be_Encrypted = true;
-	char crypto_blkdev[255];
-	property_get("ro.crypto.fs_crypto_blkdev", crypto_blkdev, "error");
-	if (strcmp(crypto_blkdev, "error") != 0) {
-		Set_FBE_Status();
-		Decrypted_Block_Device = crypto_blkdev;
-		LOGINFO("Data already decrypted, new block device: '%s'\n", crypto_blkdev);
 		if (datamedia)
-			Setup_Data_Media();
+				Setup_Data_Media();
+		Can_Be_Encrypted = true;
+		char crypto_blkdev[255];
+		property_get("ro.crypto.fs_crypto_blkdev", crypto_blkdev, "error");
+		if (strcmp(crypto_blkdev, "error") != 0) {
+			Set_FBE_Status();
+			Decrypted_Block_Device = crypto_blkdev;
+			LOGINFO("Data already decrypted, new block device: '%s'\n", crypto_blkdev);
 		DataManager::SetValue(TW_IS_ENCRYPTED, 0);
 	} else if (!Mount(false)) {
 		if (Is_Present) {
@@ -716,8 +716,6 @@ void TWPartition::Setup_Data_Partition(bool Display_Error) {
 				LOGERR("Unable to decrypt FBE device\n");
 		} else {
 			DataManager::SetValue(TW_IS_ENCRYPTED, 0);
-			if (datamedia)
-				Setup_Data_Media();
 
 		}
 	}
@@ -1232,7 +1230,7 @@ void TWPartition::Setup_Data_Media() {
 			Symlink_Mount_Point = "/sdcard";
 		}
 		Mount(false);
-		if (TWFunc::Path_Exists(Mount_Point + "/media/0")) {
+		if (Mount(false) && TWFunc::Path_Exists(Mount_Point + "/media/0")) {
 			Storage_Path = Mount_Point + "/media/0";
 			Symlink_Path = Storage_Path;
 			DataManager::SetValue(TW_INTERNAL_PATH, Mount_Point + "/media/0");
@@ -1902,6 +1900,13 @@ bool TWPartition::Repair() {
 		Find_Actual_Block_Device();
 		command = "/system/bin/fsck.exfat " + Actual_Block_Device;
 		LOGINFO("Repair command: %s\n", command.c_str());
+		if (Mount_Point == "/data") {
+			LOGINFO("Bind-unmounting /sdcard before f2fs data repair...\n");
+			usleep(32768);
+			string nul;
+			TWFunc::Exec_Cmd("umount /sdcard", false);
+			usleep(32768);
+		}
 		if (TWFunc::Exec_Cmd(command) == 0) {
 			gui_msg("done=Done.");
 			return true;
@@ -2490,6 +2495,12 @@ bool TWPartition::Wipe_F2FS() {
 		NeedPreserveFooter = false;
 	}
 	LOGINFO("mkfs.f2fs command: %s\n", f2fs_command.c_str());
+			if (Mount_Point == "/data") {
+			LOGINFO("Bind-unmounting /sdcard before f2fs data format...\n");
+			usleep(32768);
+			TWFunc::Exec_Cmd("umount /sdcard", false);
+			usleep(32768);
+		}
 	if (TWFunc::Exec_Cmd(f2fs_command) == 0) {
 		if (NeedPreserveFooter)
 			Wipe_Crypto_Key();
